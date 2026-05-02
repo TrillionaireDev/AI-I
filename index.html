@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Gate + API Bullets</title>
+
+<style>
+body{
+  margin:0;
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  background:#08080c;
+  color:white;
+  font-family:system-ui,sans-serif;
+}
+
+.box{
+  width:min(92vw,440px);
+  padding:22px;
+  border-radius:18px;
+  background:#14141c;
+  border:1px solid #333;
+  box-shadow:0 20px 60px #0008;
+}
+
+input,textarea,button{
+  width:100%;
+  padding:14px;
+  margin-top:10px;
+  border-radius:12px;
+  border:none;
+  font-size:16px;
+  box-sizing:border-box;
+}
+
+input,textarea{
+  background:#222231;
+  color:white;
+  outline:none;
+}
+
+textarea{
+  min-height:120px;
+  resize:vertical;
+}
+
+button{
+  background:linear-gradient(135deg,#8b1e3f,#d6a94a);
+  color:white;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.hidden{display:none;}
+
+.msg{
+  color:#ff8080;
+  margin-top:10px;
+  min-height:20px;
+}
+
+.small{
+  opacity:.7;
+  font-size:13px;
+  line-height:1.4;
+}
+
+.bullets{
+  margin-top:14px;
+  padding-left:22px;
+}
+
+.bullets li{
+  margin:10px 0;
+  opacity:.95;
+}
+</style>
+</head>
+
+<body>
+
+<div id="gate" class="box">
+  <h2 id="title">Set Password</h2>
+  <p id="desc">Saved in this browser.</p>
+
+  <input id="passInput" type="password" placeholder="Password"/>
+  <button id="btn">Save</button>
+
+  <div id="msg" class="msg"></div>
+</div>
+
+<div id="site" class="box hidden">
+  <h2>API Bullet Tool</h2>
+  <p class="small">API key is saved only in this browser localStorage.</p>
+
+  <input id="apiKeyInput" type="password" placeholder="Paste API key once" />
+  <button onclick="saveApiKey()">Save API Key</button>
+
+  <textarea id="chatInput" placeholder="Type messy thought here..."></textarea>
+  <button onclick="submitChat()">Make 3 Bullets</button>
+
+  <ul class="bullets">
+    <li id="b1"></li>
+    <li id="b2"></li>
+    <li id="b3"></li>
+  </ul>
+
+  <div id="apiMsg" class="msg"></div>
+
+  <button onclick="lock()">Lock</button>
+</div>
+
+<script>
+const PASS_KEY="sitePass";
+const UNLOCK_KEY="siteOpen";
+const API_KEY="openaiApiKey";
+
+let saved=localStorage.getItem(PASS_KEY);
+const open=localStorage.getItem(UNLOCK_KEY)==="true";
+
+const gate=document.getElementById("gate");
+const site=document.getElementById("site");
+
+const input=document.getElementById("passInput");
+const btn=document.getElementById("btn");
+const msg=document.getElementById("msg");
+
+if(saved){
+  document.getElementById("title").textContent="Enter Password";
+  btn.textContent="Unlock";
+}
+
+if(saved && open) show();
+
+btn.onclick=()=>{
+  const val=input.value.trim();
+  if(!val){msg.textContent="Enter something";return;}
+
+  if(!saved){
+    localStorage.setItem(PASS_KEY,val);
+    localStorage.setItem(UNLOCK_KEY,"true");
+    saved=val;
+    show();
+  }else{
+    if(val===saved){
+      localStorage.setItem(UNLOCK_KEY,"true");
+      show();
+    }else{
+      msg.textContent="Wrong";
+    }
+  }
+};
+
+function show(){
+  gate.classList.add("hidden");
+  site.classList.remove("hidden");
+
+  const existingKey = localStorage.getItem(API_KEY);
+  if(existingKey){
+    document.getElementById("apiKeyInput").placeholder="API key saved";
+  }
+}
+
+function lock(){
+  localStorage.setItem(UNLOCK_KEY,"false");
+  location.reload();
+}
+
+function saveApiKey(){
+  const key=document.getElementById("apiKeyInput").value.trim();
+  const apiMsg=document.getElementById("apiMsg");
+
+  if(!key){
+    apiMsg.textContent="Paste API key first.";
+    return;
+  }
+
+  localStorage.setItem(API_KEY,key);
+  document.getElementById("apiKeyInput").value="";
+  document.getElementById("apiKeyInput").placeholder="API key saved";
+  apiMsg.textContent="API key saved locally.";
+}
+
+async function submitChat(){
+  const text=document.getElementById("chatInput").value.trim();
+  const key=localStorage.getItem(API_KEY);
+  const apiMsg=document.getElementById("apiMsg");
+
+  if(!key){
+    apiMsg.textContent="Save API key first.";
+    return;
+  }
+
+  if(!text){
+    apiMsg.textContent="Type something first.";
+    return;
+  }
+
+  apiMsg.textContent="Thinking...";
+
+  document.getElementById("b1").textContent="";
+  document.getElementById("b2").textContent="";
+  document.getElementById("b3").textContent="";
+
+  try{
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization":"Bearer " + key
+      },
+      body:JSON.stringify({
+        model:"gpt-5.3-mini",
+        input:
+          "Turn this into exactly 3 short bullet points. " +
+          "No intro. No extra text. Each bullet should be clear and useful:\\n\\n" +
+          text,
+        max_output_tokens:120
+      })
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      apiMsg.textContent = data.error?.message || "API error.";
+      return;
+    }
+
+    const output = data.output_text || "";
+    const lines = output
+      .split("\n")
+      .map(x => x.replace(/^[-•*]\s*/, "").trim())
+      .filter(Boolean)
+      .slice(0,3);
+
+    document.getElementById("b1").textContent = lines[0] || "";
+    document.getElementById("b2").textContent = lines[1] || "";
+    document.getElementById("b3").textContent = lines[2] || "";
+
+    apiMsg.textContent="Done.";
+  }catch(err){
+    apiMsg.textContent="Request failed. Check key, internet, or permissions.";
+  }
+}
+</script>
+
+</body>
+</html>
